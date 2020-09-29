@@ -1,7 +1,9 @@
-﻿using Azylee.Core.ThreadUtils.SleepUtils;
+﻿using Azylee.Core.DataUtils.CollectionUtils;
+using Azylee.Core.ThreadUtils.SleepUtils;
 using Azylee.Core.WindowsUtils.ConsoleUtils;
 using Azylee.Jsons;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Sockets;
@@ -18,28 +20,27 @@ namespace Azylee.YeahWeb.SocketUtils.TcpUtils
         private TcpClient Client = null;
         private NetworkStream networkStream = null;
 
-        TcpDelegate.ReceiveMessage ReceiveMessage;
-        TcpDelegate.OnConnect OnConnect;
-        TcpDelegate.OnDisconnect OnDisconnect;
-
-        //public TcpDataConverter.Message ReceiveMessage;
+        Action OnConnectAction = null;
+        Action OnDisconnectAction = null;
+        Action<TcpDataModel> OnReceiveAction = null;
+        ConcurrentQueue<Tuple<int, Action<TcpDataModel>>> SyncFunction = new ConcurrentQueue<Tuple<int, Action<TcpDataModel>>>();
 
         /// <summary>
         /// 构造函数
         /// </summary>
         /// <param name="ip"></param>
         /// <param name="port"></param>
-        public TcppClient(string ip, int port,
-            TcpDelegate.ReceiveMessage receive,
-              TcpDelegate.OnConnect connect,
-               TcpDelegate.OnDisconnect disconnect)
+        /// <param name="onConnect">连接动作</param>
+        /// <param name="onDisconnect">断开动作</param>
+        /// <param name="onReceive">接收消息</param>
+        public TcppClient(string ip, int port, Action onConnect, Action onDisconnect, Action<TcpDataModel> onReceive)
         {
             this._IP = ip;
             this._Port = port;
 
-            ReceiveMessage += receive;
-            OnConnect += connect;
-            OnDisconnect += disconnect;
+            OnConnectAction = onConnect;
+            OnDisconnectAction = onDisconnect;
+            OnReceiveAction = onReceive;
         }
 
         #region 连接和关闭连接
@@ -74,35 +75,27 @@ namespace Azylee.YeahWeb.SocketUtils.TcpUtils
 
         #region 连接后的读写操作
         /// <summary>
-        /// 发送数据
+        /// 发送数据（action禁止使用阻塞操作，必须新建task线程操作）
         /// </summary>
         /// <param name="model">数据模型</param>
-        public bool Write(TcpDataModel model)
+        /// <param name="actionType">事件驱动处理类型</param>
+        /// <param name="action">事件驱动处理方法</param>
+        public bool Write(TcpDataModel model, int? actionType = 0, Action<TcpDataModel> action = null)
         {
             bool flag = false;
-            if (this.Client != null && this.Client.Connected)
+            if (Client != null && Client.Connected)
             {
                 flag = TcpStreamHelper.Write(Client, model);
             }
+            if (flag)
+            {
+                if (actionType != null && action != null)
+                {
+                    int type = actionType.GetValueOrDefault();
+                    SyncFunction.Enqueue(new Tuple<int, Action<TcpDataModel>>(type, action));
+                }
+            }
             return flag;
-        }
-        /// <summary>
-        /// 发送数据
-        /// </summary>
-        /// <param name="type">类型</param>
-        /// <param name="data">数据</param>
-        public bool Write(int type, byte[] data)
-        {
-            return Write(new TcpDataModel() { Type = type, Data = data });
-        }
-        /// <summary>
-        /// 发送数据
-        /// </summary>
-        /// <param name="type">类型</param>
-        /// <param name="s">字符串</param>
-        public bool Write(int type, string s)
-        {
-            return Write(new TcpDataModel() { Type = type, Data = Json.Object2Byte(s) });
         }
         /// <summary>
         /// 接受数据
@@ -114,16 +107,18 @@ namespace Azylee.YeahWeb.SocketUtils.TcpUtils
                 this.Client = (TcpClient)state.AsyncState;
                 this.Client.EndConnect(state);
 
-                string host = this.Client.Client.RemoteEndPoint.ToString();
-                ConnectTask(host, this.Client);
+                // c# 系统检测到在一个调用中尝试使用指针参数时的无效指针地址 怎么解决
+                // 用管理身份运行cmd，执行 netsh winsock reset 重启问题解决
+                //string host = this.Client.Client.RemoteEndPoint.ToString();
+                ConnectTask(Client);
             }
-            catch { }
+            catch (Exception ex) { }
         }
-        private void ConnectTask(string host, TcpClient client)
+        private void ConnectTask(TcpClient client)
         {
             Task.Factory.StartNew(() =>
             {
-                OnConnect?.Invoke(host);//委托：已连接
+                OnConnectAction?.Invoke();//委托：已连接
                 while (client.Connected)
                 {
                     try
@@ -134,11 +129,25 @@ namespace Azylee.YeahWeb.SocketUtils.TcpUtils
                             if (model.Type == int.MaxValue)
                             {
                                 //返回心跳
-                                Write(new TcpDataModel() { Type = int.MaxValue });
+                                Write(new TcpDataModel(int.MaxValue));
                             }
                             else
                             {
-                                ReceiveMessage(host, model);//委托：接收消息
+                                //优先调用默认接收消息方法Action
+                                OnReceiveAction?.Invoke(model);
+
+                                //调用同步处理委托方法
+                                if (Ls.Ok(SyncFunction))
+                                {
+                                    for (var i = 0; i < SyncFunction.Count; i++)
+                                    {
+                                        bool flag = SyncFunction.TryDequeue(out Tuple<int, Action<TcpDataModel>> fun);
+                                        if (flag)
+                                        {
+                                            Task.Factory.StartNew(() => { fun.Item2?.Invoke(model); });
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -146,7 +155,7 @@ namespace Azylee.YeahWeb.SocketUtils.TcpUtils
                     //Sleep.S(1);
                 }
                 client.Close();
-                OnDisconnect?.Invoke(host);//委托：断开连接
+                OnDisconnectAction?.Invoke();//委托：断开连接
             });
             //lstn.BeginAcceptTcpClient(new AsyncCallback(acceptCallback), lstn);
         }

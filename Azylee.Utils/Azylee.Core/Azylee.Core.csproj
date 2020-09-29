@@ -32,6 +32,7 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="PresentationFramework" />
     <Reference Include="System" />
     <Reference Include="System.configuration" />
     <Reference Include="System.Core" />
@@ -57,6 +58,7 @@
     <Compile Include="DataUtils\CompressionUtils\Compression.cs" />
     <Compile Include="DataUtils\CurrencyUtils\RMB.cs" />
     <Compile Include="DataUtils\DateTimeUtils\ChineseHourTool.cs" />
+    <Compile Include="DataUtils\DateTimeUtils\DateTimeFormatter.cs" />
     <Compile Include="DataUtils\DateTimeUtils\DateTimeConvert.cs" />
     <Compile Include="DataUtils\DateTimeUtils\DateTimeTool.cs" />
     <Compile Include="DataUtils\DateTimeUtils\DateTool.cs" />
@@ -157,6 +159,7 @@
     <Compile Include="WindowsUtils\APIUtils\ApplicationAPI.cs" />
     <Compile Include="WindowsUtils\APIUtils\ExplorerAPI.cs" />
     <Compile Include="WindowsUtils\APIUtils\PermissionAPI.cs" />
+    <Compile Include="WindowsUtils\APIUtils\ScreenAPI.cs" />
     <Compile Include="WindowsUtils\APIUtils\SystemSleepAPI.cs" />
     <Compile Include="WindowsUtils\APIUtils\WallpaperUtils\WallpaperTool.cs" />
     <Compile Include="WindowsUtils\APIUtils\WindowsAPI.cs" />
@@ -164,6 +167,7 @@
     <Compile Include="WindowsUtils\APIUtils\WinDrawUtils\WinDrawTool.cs" />
     <Compile Include="WindowsUtils\APIUtils\WindowsHotKeyAPI.cs" />
     <Compile Include="WindowsUtils\BrowserUtils\BrowserSelector.cs" />
+    <Compile Include="WindowsUtils\BrowserUtils\BrowserTool.cs" />
     <Compile Include="WindowsUtils\ClipboardUtils\ClipboardTool.cs" />
     <Compile Include="WindowsUtils\CMDUtils\CMDNetstatTool.cs" />
     <Compile Include="WindowsUtils\CMDUtils\CMDProcessTool.cs" />
